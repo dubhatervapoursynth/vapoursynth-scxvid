@@ -10,7 +10,7 @@ sources = [
      'src/scxvid.cpp',
 ]
 
-xvid_dep = dependency('xvid')
+xvid_dep = dependency('xvidcore')
 
 deps = [xvid_dep]
 
