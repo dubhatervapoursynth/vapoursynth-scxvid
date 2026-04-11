@@ -46,7 +46,7 @@ jobs:
 
     - uses: actions/upload-artifact@v7
       with:
-        name: subtext-${{ matrix.arch }}
+        name: scxvid-${{ matrix.arch }}
         path: dist
 
   build-windows-wheel:
@@ -66,9 +66,7 @@ jobs:
         msystem: CLANG64
         update: true
         install: >-
-          mingw-w64-clang-x86_64-autotools
           mingw-w64-clang-x86_64-git
-          mingw-w64-clang-x86_64-nasm
           mingw-w64-clang-x86_64-meson
           mingw-w64-clang-x86_64-python-build
           mingw-w64-clang-x86_64-python-wheel
@@ -88,12 +86,12 @@ jobs:
 
     - uses: actions/upload-artifact@v7
       with:
-        name: subtext-sdist
+        name: scxvid-sdist
         path: dist/*.tar.gz
 
     - uses: actions/upload-artifact@v7
       with:
-        name: subtext-win_amd64
+        name: scxvid-win_amd64
         path: dist/*.whl
 
   publish:

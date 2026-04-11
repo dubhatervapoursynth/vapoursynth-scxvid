@@ -10,7 +10,7 @@ sources = [
      'src/scxvid.cpp',
 ]
 
-xvid_dep = dependency('xvidcore')
+xvid_dep = meson.get_compiler('cpp').find_library('xvidcore')
 
 deps = [xvid_dep]
 
