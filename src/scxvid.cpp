@@ -18,7 +18,6 @@ typedef struct {
    VSNode *node;
    const VSVideoInfo *vi;
    std::string prop_name;
-   const char *log;
    int use_slices;
    void *xvid_handle;
    xvid_enc_frame_t xvid_enc_frame;
@@ -117,7 +116,7 @@ static void VS_CC scxvidCreate(const VSMap *in, VSMap *out, void *userData, VSCo
       return;
    }
 
-   d.log = vsapi->mapGetData(in, "log", 0, &err);
+   const char *log = vsapi->mapGetData(in, "log", 0, &err);
 
    const char *prop_name = vsapi->mapGetData(in, "prop", 0, &err);
    if (err || strlen(prop_name) == 0)
@@ -163,7 +162,7 @@ static void VS_CC scxvidCreate(const VSMap *in, VSMap *out, void *userData, VSCo
    xvid_plugin_2pass1_t xvid_rc_plugin;
    memset(&xvid_rc_plugin, 0, sizeof(xvid_rc_plugin));
    xvid_rc_plugin.version = XVID_VERSION;
-   xvid_rc_plugin.filename = (char *)d.log;
+   xvid_rc_plugin.filename = (char *)log;
    plugins[0].func = xvid_plugin_2pass1;
    plugins[0].param = &xvid_rc_plugin;
    d.xvid_enc_create.plugins = plugins;
