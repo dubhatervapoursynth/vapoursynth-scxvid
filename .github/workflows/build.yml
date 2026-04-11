@@ -12,9 +12,9 @@ jobs:
         - arch: linux_aarch64
           runs-on: ubuntu-24.04-arm
         - arch: macosx_x86_64
-          runs-on: macos-15-intel
+          runs-on: macos-26-intel
         - arch: macosx_arm64
-          runs-on: macos-15
+          runs-on: macos-26
       fail-fast: false
 
     runs-on: ${{ matrix.runs-on }}
@@ -26,7 +26,7 @@ jobs:
 
     - uses: pypa/cibuildwheel@v3.4.0
       env:
-        CIBW_BUILD: cp312-*
+        CIBW_BUILD: cp314-*
         CIBW_CONFIG_SETTINGS: setup-args="-Db_lto=true"
         CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=15
         CIBW_BEFORE_ALL_LINUX: >
