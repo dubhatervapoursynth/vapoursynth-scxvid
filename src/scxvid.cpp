@@ -1,13 +1,17 @@
 #include <cstdlib>
 #include <cstring>
 #include <unordered_map>
+#include <string>
+#include <mutex>
 #include <xvid.h>
 #include <VapourSynth4.h>
 #include <VSHelper4.h>
 
 #define SCXVID_BUFFER_SIZE (1024*1024*4)
 
-static int xvid_inited = 0;
+
+static std::once_flag xvid_inited_flag;
+static bool xvid_inited = false;
 
 
 typedef struct {
@@ -24,112 +28,6 @@ typedef struct {
 
    std::unordered_map<int, int> prop_map;
 } ScxvidData;
-
-
-static void VS_CC scxvidInit(VSMap *in, VSMap *out, void *instanceData, VSNode *node, VSCore *core, const VSAPI *vsapi) {
-   ScxvidData *d = (ScxvidData *) instanceData;
-
-   d->output_buffer = nullptr;
-   d->last_frame = -1;
-   int error = 0;
-
-   if (!xvid_inited) {
-      xvid_gbl_init_t xvid_init;
-      memset(&xvid_init, 0, sizeof(xvid_init));
-      xvid_init.version = XVID_VERSION;
-      xvid_init.debug = ~0;
-      error = xvid_global(nullptr, XVID_GBL_INIT, &xvid_init, nullptr);
-      if (error) {
-         vsapi->freeNode(d->node);
-         free(d);
-         vsapi->mapSetError(out, "Scxvid: Failed to initialize Xvid");
-         return;
-      }
-      xvid_inited = 1;
-   }
-
-   xvid_gbl_info_t xvid_info;
-   memset(&xvid_info, 0, sizeof(xvid_info));
-   xvid_info.version = XVID_VERSION;
-   error = xvid_global(nullptr, XVID_GBL_INFO, &xvid_info, nullptr);
-   if (error) {
-      vsapi->freeNode(d->node);
-      free(d);
-      vsapi->mapSetError(out, "Scxvid: Failed to initialize Xvid");
-      return;
-   }
-
-   memset(&d->xvid_enc_create, 0, sizeof(d->xvid_enc_create));
-   d->xvid_enc_create.version = XVID_VERSION;
-   d->xvid_enc_create.profile = 0;
-   d->xvid_enc_create.width = d->vi->width;
-   d->xvid_enc_create.height = d->vi->height;
-   d->xvid_enc_create.num_threads = xvid_info.num_threads;
-   if (d->use_slices)
-      d->xvid_enc_create.num_slices = xvid_info.num_threads;
-   d->xvid_enc_create.fincr = 1;
-   d->xvid_enc_create.fbase = 1;
-   d->xvid_enc_create.max_key_interval = 10000000; //huge number
-   xvid_enc_plugin_t plugins[1];
-   xvid_plugin_2pass1_t xvid_rc_plugin;
-   memset(&xvid_rc_plugin, 0, sizeof(xvid_rc_plugin));
-   xvid_rc_plugin.version = XVID_VERSION;
-   xvid_rc_plugin.filename = (char *)d->log;
-   plugins[0].func = xvid_plugin_2pass1;
-   plugins[0].param = &xvid_rc_plugin;
-   d->xvid_enc_create.plugins = plugins;
-   d->xvid_enc_create.num_plugins = 1;
-
-   error = xvid_encore(nullptr, XVID_ENC_CREATE, &d->xvid_enc_create, nullptr);
-   if (error) {
-      vsapi->freeNode(d->node);
-      free(d);
-      vsapi->mapSetError(out, "Scxvid: Failed to initialize Xvid encoder");
-      return;
-   }
-   d->xvid_handle = d->xvid_enc_create.handle;
-
-   //default identical(?) to xvid 1.1.2 vfw general preset
-   memset(&d->xvid_enc_frame, 0, sizeof(d->xvid_enc_frame));
-   d->xvid_enc_frame.version = XVID_VERSION;
-   d->xvid_enc_frame.vol_flags = 0;
-   d->xvid_enc_frame.vop_flags = XVID_VOP_MODEDECISION_RD
-                               | XVID_VOP_HALFPEL
-                               | XVID_VOP_HQACPRED
-                               | XVID_VOP_TRELLISQUANT
-                               | XVID_VOP_INTER4V;
-
-   d->xvid_enc_frame.motion = XVID_ME_CHROMA_PVOP
-                            | XVID_ME_CHROMA_BVOP
-                            | XVID_ME_HALFPELREFINE16
-                            | XVID_ME_EXTSEARCH16
-                            | XVID_ME_HALFPELREFINE8
-                            | 0
-                            | XVID_ME_USESQUARES16;
-
-   d->xvid_enc_frame.type = XVID_TYPE_AUTO;
-   d->xvid_enc_frame.quant = 0;
-
-   /* 
-    * NOT XVID_CSP_YV12, even though we are feeding it that,
-    * because with XVID_CSP_YV12 it assumes the U plane
-    * is located just after the Y plane, and the V plane
-    * just after the U plane. This used to be the way
-    * VapourSynth allocated the planes, before r316.
-    *
-    * With XVID_CSP_PLANAR it doesn't assume anything and
-    * just uses whatever pointers we pass.
-    */
-   d->xvid_enc_frame.input.csp = XVID_CSP_PLANAR;
-
-   if (!(d->output_buffer = malloc(SCXVID_BUFFER_SIZE))) {
-      vsapi->freeNode(d->node);
-      xvid_encore(d->xvid_handle, XVID_ENC_DESTROY, nullptr, nullptr);
-      free(d);
-      vsapi->mapSetError(out, "Scxvid: Failed to allocate buffer");
-      return;
-   }
-}
 
 
 static const VSFrame *VS_CC scxvidGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
@@ -194,6 +92,15 @@ static void VS_CC scxvidFree(void *instanceData, VSCore *core, const VSAPI *vsap
 }
 
 
+static void initializeXvid() {
+    xvid_gbl_init_t xvid_init;
+    memset(&xvid_init, 0, sizeof(xvid_init));
+    xvid_init.version = XVID_VERSION;
+    xvid_init.debug = ~0;
+    xvid_inited = !xvid_global(nullptr, XVID_GBL_INIT, &xvid_init, nullptr);
+}
+
+
 static void VS_CC scxvidCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
    ScxvidData d;
    ScxvidData *data;
@@ -223,26 +130,18 @@ static void VS_CC scxvidCreate(const VSMap *in, VSMap *out, void *userData, VSCo
    }
 
 
-   int error = 0;
+   std::call_once(xvid_inited_flag, initializeXvid);
 
    if (!xvid_inited) {
-       xvid_gbl_init_t xvid_init;
-       memset(&xvid_init, 0, sizeof(xvid_init));
-       xvid_init.version = XVID_VERSION;
-       xvid_init.debug = ~0;
-       error = xvid_global(nullptr, XVID_GBL_INIT, &xvid_init, nullptr);
-       if (error) {
-           vsapi->freeNode(d.node);
-           vsapi->mapSetError(out, "Scxvid: Failed to initialize Xvid");
-           return;
-       }
-       xvid_inited = 1;
+       vsapi->freeNode(d.node);
+       vsapi->mapSetError(out, "Scxvid: Failed to initialize Xvid");
+       return;
    }
 
    xvid_gbl_info_t xvid_info;
    memset(&xvid_info, 0, sizeof(xvid_info));
    xvid_info.version = XVID_VERSION;
-   error = xvid_global(nullptr, XVID_GBL_INFO, &xvid_info, nullptr);
+   int error = xvid_global(nullptr, XVID_GBL_INFO, &xvid_info, nullptr);
    if (error) {
        vsapi->freeNode(d.node);
        vsapi->mapSetError(out, "Scxvid: Failed to initialize Xvid");
