@@ -10,7 +10,7 @@ Usage
 =====
 ::
 
-    scxvid.Scxvid(clip clip[, string log="", bint use_slices=True])
+    scxvid.Scxvid(clip clip[, string log="", bint use_slices=True, prop="_SceneChangePrev"])
 
 Parameters:
     *clip*
@@ -22,6 +22,9 @@ Parameters:
     *use_slices*
         This should make Scxvid faster, at the cost of slight differences in
         the scene change detection.
+        
+    *prop*
+        The property name to assign the output to.
 
 The *log* parameter is optional, because the ``_SceneChangePrev`` property
 will be attached to every frame. Thus some users may not need xvid's log file.

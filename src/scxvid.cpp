@@ -13,7 +13,7 @@ static int xvid_inited = 0;
 typedef struct {
    VSNode *node;
    const VSVideoInfo *vi;
-
+   std::string prop_name;
    const char *log;
    int use_slices;
    void *xvid_handle;
@@ -173,7 +173,7 @@ static const VSFrame *VS_CC scxvidGetFrame(int n, int activationReason, void *in
       vsapi->freeFrame(src);
 
       VSMap *props = vsapi->getFramePropertiesRW(dst);
-      vsapi->mapSetInt(props, "_SceneChangePrev", d->prop_map.at(n), maReplace);
+      vsapi->mapSetInt(props, d->prop_name.c_str(), d->prop_map.at(n), maReplace);
       d->prop_map.erase(n);
 
       return dst;
@@ -211,6 +211,10 @@ static void VS_CC scxvidCreate(const VSMap *in, VSMap *out, void *userData, VSCo
    }
 
    d.log = vsapi->mapGetData(in, "log", 0, &err);
+
+   const char *prop_name = vsapi->mapGetData(in, "prop", 0, &err);
+   if (err || strlen(prop_name) == 0)
+       d.prop_name = "_SceneChangePrev";
 
    d.use_slices = vsapi->mapGetIntSaturated(in, "use_slices", 0, &err);
    if (err) {
@@ -327,5 +331,5 @@ static void VS_CC scxvidCreate(const VSMap *in, VSMap *out, void *userData, VSCo
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin *plugin, const VSPLUGINAPI *vspapi) {
     vspapi->configPlugin("com.nodame.scxvid", "scxvid", "VapourSynth Scxvid Plugin", VS_MAKE_VERSION(2, 0), VAPOURSYNTH_API_VERSION, 1, plugin);
-    vspapi->registerFunction("Scxvid", "clip:vnode;log:data:opt;use_slices:int:opt", "clip:vnode;", scxvidCreate, 0, plugin);
+    vspapi->registerFunction("Scxvid", "clip:vnode;log:data:opt;use_slices:int:opt;prop:data:opt;", "clip:vnode;", scxvidCreate, 0, plugin);
 }
