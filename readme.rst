@@ -24,11 +24,10 @@ Parameters:
         the scene change detection.
         
     *prop*
-        The property name to assign the output to.
+        The property name to store scene change information in.
 
-The *log* parameter is optional, because the ``_SceneChangePrev`` property
+The *log* parameter is optional because the ``_SceneChangePrev`` property
 will be attached to every frame. Thus some users may not need xvid's log file.
 
-For correct scene change detection, one must request all the frames, starting
-at 0, strictly in ascending order. It's probably best if Scxvid is the last
-filter in the chain.
+Note that seeking can be slow since the filter needs to process every frame 
+from the start up to the requested frame number.

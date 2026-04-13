@@ -1,6 +1,6 @@
 #include <cstdlib>
 #include <cstring>
-#include <unordered_map>
+#include <vector>
 #include <string>
 #include <mutex>
 #include <xvid.h>
@@ -24,54 +24,69 @@ typedef struct {
    void *output_buffer;
    int last_frame;
    xvid_enc_create_t xvid_enc_create;
-
-   std::unordered_map<int, int> prop_map;
+   bool processingRequest;
+   std::vector<bool> keyframe_map;
 } ScxvidData;
 
 
 static const VSFrame *VS_CC scxvidGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
    ScxvidData *d = (ScxvidData *) instanceData;
 
+   static constexpr const int frameGroupSize = 20;
+
    if (activationReason == arInitial) {
-      int distance = n - d->last_frame;
-      for (int frame = d->last_frame + 1; frame <= n && distance < 50; frame++)
-         vsapi->requestFrameFilter(frame, d->node, frameCtx);
-      vsapi->requestFrameFilter(n, d->node, frameCtx);
+       d->processingRequest = (n > d->last_frame);
+       if (d->processingRequest) {
+           int end_frame = d->last_frame + std::min(n - d->last_frame, frameGroupSize);
+           for (int frame = d->last_frame + 1; frame <= end_frame; frame++)
+               vsapi->requestFrameFilter(frame, d->node, frameCtx);
+       } else {
+           vsapi->requestFrameFilter(n, d->node, frameCtx);
+       }
    } else if (activationReason == arAllFramesReady) {
-      int distance = n - d->last_frame;
-      for (int frame = d->last_frame + 1; frame <= n && distance < 50; frame++) {
-         const VSFrame *src = vsapi->getFrameFilter(frame, d->node, frameCtx);
-         xvid_enc_stats_t stats;
-         stats.version = XVID_VERSION;
+       if (d->processingRequest) {
+           int end_frame = d->last_frame + std::min(n - d->last_frame, frameGroupSize);
+           for (int frame = d->last_frame + 1; frame <= end_frame; frame++) {
+               const VSFrame *src = vsapi->getFrameFilter(frame, d->node, frameCtx);
+               xvid_enc_stats_t stats;
+               stats.version = XVID_VERSION;
 
-         for (int plane = 0; plane < d->vi->format.numPlanes; plane++) {
-            d->xvid_enc_frame.input.plane[plane] = (void*)vsapi->getReadPtr(src, plane);
-            d->xvid_enc_frame.input.stride[plane] = vsapi->getStride(src, plane);
-         }
+               for (int plane = 0; plane < d->vi->format.numPlanes; plane++) {
+                   d->xvid_enc_frame.input.plane[plane] = (void *)vsapi->getReadPtr(src, plane);
+                   d->xvid_enc_frame.input.stride[plane] = static_cast<int>(vsapi->getStride(src, plane));
+               }
 
-         d->xvid_enc_frame.length = SCXVID_BUFFER_SIZE;
-         d->xvid_enc_frame.bitstream = d->output_buffer;
+               d->xvid_enc_frame.length = SCXVID_BUFFER_SIZE;
+               d->xvid_enc_frame.bitstream = d->output_buffer;
 
-         int error = xvid_encore(d->xvid_handle, XVID_ENC_ENCODE, &d->xvid_enc_frame, &stats);
-         if (error < 0) {
-            vsapi->setFilterError("Scxvid: xvid_encore returned an error code", frameCtx);
-            vsapi->freeFrame(src);
-            return 0;
-         }
+               int error = xvid_encore(d->xvid_handle, XVID_ENC_ENCODE, &d->xvid_enc_frame, &stats);
+               if (error < 0) {
+                   vsapi->setFilterError("Scxvid: xvid_encore returned an error code", frameCtx);
+                   vsapi->freeFrame(src);
+                   return nullptr;
+               }
 
-         vsapi->freeFrame(src);
-         d->last_frame = n;
+               vsapi->freeFrame(src);
+               d->last_frame = frame;
 
-         d->prop_map.insert(std::pair<int, int>(frame, (stats.type == XVID_TYPE_IVOP)));
-      }
+               d->keyframe_map[frame] = (stats.type == XVID_TYPE_IVOP);
+           }
+
+           d->processingRequest = (n > d->last_frame);
+           if (d->processingRequest) {
+               int end_frame = d->last_frame + std::min(n - d->last_frame, frameGroupSize);
+               for (int frame = d->last_frame + 1; frame <= end_frame; frame++)
+                   vsapi->requestFrameFilter(frame, d->node, frameCtx);
+               return nullptr;
+           }
+       }
 
       const VSFrame *src = vsapi->getFrameFilter(n, d->node, frameCtx);
       VSFrame *dst = vsapi->copyFrame(src, core);
       vsapi->freeFrame(src);
 
       VSMap *props = vsapi->getFramePropertiesRW(dst);
-      vsapi->mapSetInt(props, d->prop_name.c_str(), d->prop_map.at(n), maReplace);
-      d->prop_map.erase(n);
+      vsapi->mapSetInt(props, d->prop_name.c_str(), d->keyframe_map.at(n), maAppend);
 
       return dst;
    }
@@ -119,8 +134,11 @@ static void VS_CC scxvidCreate(const VSMap *in, VSMap *out, void *userData, VSCo
    const char *log = vsapi->mapGetData(in, "log", 0, &err);
 
    const char *prop_name = vsapi->mapGetData(in, "prop", 0, &err);
-   if (err || strlen(prop_name) == 0)
+   if (err || !prop_name[0]) {
        d.prop_name = "_SceneChangePrev";
+   } else {
+       d.prop_name = prop_name;
+   }
 
    d.use_slices = vsapi->mapGetIntSaturated(in, "use_slices", 0, &err);
    if (err) {
@@ -215,6 +233,8 @@ static void VS_CC scxvidCreate(const VSMap *in, VSMap *out, void *userData, VSCo
        vsapi->mapSetError(out, "Scxvid: Failed to allocate buffer");
        return;
    }
+
+   d.keyframe_map.resize(d.vi->numFrames);
 
    data = new ScxvidData();
    *data = d;
