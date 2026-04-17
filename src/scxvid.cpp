@@ -67,6 +67,8 @@ static const VSFrame *VS_CC scxvidGetFrame(int n, int activationReason, void *in
                }
 
                vsapi->freeFrame(src);
+               if (frame != n)
+                   vsapi->releaseFrameEarly(d->node, frame, frameCtx);
                d->last_frame = frame;
 
                d->keyframe_map[frame] = (stats.type == XVID_TYPE_IVOP);
@@ -248,6 +250,6 @@ static void VS_CC scxvidCreate(const VSMap *in, VSMap *out, void *userData, VSCo
 
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin *plugin, const VSPLUGINAPI *vspapi) {
-    vspapi->configPlugin("com.nodame.scxvid", "scxvid", "VapourSynth Scxvid Plugin", VS_MAKE_VERSION(2, 0), VAPOURSYNTH_API_VERSION, 1, plugin);
+    vspapi->configPlugin("com.nodame.scxvid", "scxvid", "VapourSynth Scxvid Plugin", VS_MAKE_VERSION(3, 0), VAPOURSYNTH_API_VERSION, 1, plugin);
     vspapi->registerFunction("Scxvid", "clip:vnode;log:data:opt;use_slices:int:opt;prop:data:opt;", "clip:vnode;", scxvidCreate, 0, plugin);
 }

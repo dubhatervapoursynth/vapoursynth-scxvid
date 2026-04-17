@@ -3,7 +3,7 @@ project('SCXvid', 'cpp',
     license: 'GPL-2.0',
     license_files: 'LICENSE',
     meson_version: '>=1.2.3',
-    version: '2.0',
+    version: '3.0',
 )
 
 sources = [
