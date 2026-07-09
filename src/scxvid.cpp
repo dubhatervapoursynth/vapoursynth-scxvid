@@ -49,6 +49,7 @@ static const VSFrame *VS_CC scxvidGetFrame(int n, int activationReason, void *in
            for (int frame = d->last_frame + 1; frame <= end_frame; frame++) {
                const VSFrame *src = vsapi->getFrameFilter(frame, d->node, frameCtx);
                xvid_enc_stats_t stats;
+               memset(&stats, 0, sizeof(stats));
                stats.version = XVID_VERSION;
 
                for (int plane = 0; plane < d->vi->format.numPlanes; plane++) {
@@ -112,7 +113,7 @@ static void initializeXvid() {
     xvid_gbl_init_t xvid_init;
     memset(&xvid_init, 0, sizeof(xvid_init));
     xvid_init.version = XVID_VERSION;
-    xvid_init.debug = ~0;
+    xvid_init.debug = 0;
     xvid_inited = !xvid_global(nullptr, XVID_GBL_INIT, &xvid_init, nullptr);
 }
 
