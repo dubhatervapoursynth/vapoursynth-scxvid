@@ -4,7 +4,7 @@ build-backend = "mesonpy"
 
 [project]
 name = "vapoursynth-scxvid"
-description = "Scene change detection usign xvid for VapourSynth"
+description = "Scene change detection using xvid for VapourSynth"
 readme = "readme.rst"
 requires-python = ">=3.12"
 license = "GPL-2.0"
